@@ -1,0 +1,477 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+
+<style>
+  :root{
+    --bg:#0a0a0a;
+    --surface:#141414;
+    --surface-2:#1b1b1b;
+    --border:#272727;
+    --red:#e8352c;
+    --red-dim:#5c1512;
+    --blue:#2f7dfa;
+    --blue-dim:#0f2c57;
+    --text:#f2f2f0;
+    --muted:#8c8c8c;
+    --faint:#4d4d4d;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk',sans-serif;
+    height:100%;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{
+    max-width:900px;
+    margin:0 auto;
+    padding:28px 20px 60px;
+  }
+
+  /* ---------- HEADER ---------- */
+  .header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    margin-bottom:26px;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  .header h1{
+    font-size:22px;
+    font-weight:700;
+    letter-spacing:0.02em;
+  }
+  .header .sub{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--muted);
+    letter-spacing:0.08em;
+    margin-top:4px;
+    text-transform:uppercase;
+  }
+  .status-pill{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    padding:8px 14px;
+    border-radius:100px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .status-dot{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--faint);
+    transition:background .3s;
+  }
+  .status-dot.on{background:var(--blue);box-shadow:0 0 8px var(--blue)}
+  .status-dot.off{background:var(--red);box-shadow:0 0 8px var(--red)}
+
+  /* ---------- GRID ---------- */
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px;
+  }
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px;
+    position:relative;
+    overflow:hidden;
+  }
+  .card-label{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .card-label svg{
+    width:15px;height:15px;
+    flex-shrink:0;
+    stroke:var(--muted);
+  }
+  .climate-col:first-child .card-label svg{stroke:var(--red)}
+  .climate-col:last-child .card-label svg{stroke:var(--blue)}
+
+  /* ---------- CLIMATE ---------- */
+  .climate{
+    grid-column:span 2;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:20px;
+  }
+  .climate-col:first-child{
+    border-right:1px solid var(--border);
+    padding-right:20px;
+  }
+  .readout{
+    display:flex;
+    align-items:baseline;
+    gap:4px;
+  }
+  .readout .val{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:44px;
+    font-weight:600;
+    line-height:1;
+  }
+  .readout .unit{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:18px;
+    color:var(--muted);
+  }
+  .readout.temp .val{color:var(--red)}
+  .readout.hum .val{color:var(--blue)}
+
+  /* ---------- MOTION ---------- */
+  .motion{
+    grid-column:span 1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    min-height:180px;
+  }
+  .radar{
+    position:relative;
+    width:76px;height:76px;
+    display:flex;align-items:center;justify-content:center;
+    margin-bottom:14px;
+  }
+  .radar-core{
+    width:14px;height:14px;
+    border-radius:50%;
+    background:var(--blue);
+    box-shadow:0 0 10px var(--blue);
+    z-index:2;
+    transition:background .3s, box-shadow .3s;
+  }
+  .radar-ring{
+    position:absolute;
+    inset:0;
+    border-radius:50%;
+    border:1.5px solid var(--blue);
+    opacity:0;
+  }
+  .radar.active .radar-core{
+    background:var(--red);
+    box-shadow:0 0 14px var(--red);
+  }
+  .radar.active .radar-ring{
+    border-color:var(--red);
+    animation:pulse 1.6s ease-out infinite;
+  }
+  @keyframes pulse{
+    0%{transform:scale(0.4);opacity:.7}
+    100%{transform:scale(2.4);opacity:0}
+  }
+  .motion-text{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    font-weight:500;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .motion.active .motion-text{color:var(--red)}
+  .motion:not(.active) .motion-text{color:var(--blue)}
+
+  /* ---------- ROLLO ---------- */
+  .rollo{
+    grid-column:span 1;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+  .rollo-visual{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:10px 0;
+  }
+  .blind-frame{
+    width:64px;
+    height:96px;
+    border:2px solid var(--border);
+    border-radius:6px;
+    position:relative;
+    overflow:hidden;
+    background:var(--surface-2);
+  }
+  .blind-fill{
+    position:absolute;
+    top:0;left:0;right:0;
+    background:repeating-linear-gradient(
+      to bottom,
+      var(--blue) 0px, var(--blue) 6px,
+      var(--blue-dim) 6px, var(--blue-dim) 8px
+    );
+    height:0%;
+    transition:height .4s ease;
+  }
+  .rollo-toggle{
+    display:flex;
+    border:1px solid var(--border);
+    border-radius:10px;
+    overflow:hidden;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .rollo-toggle .opt{
+    flex:1;
+    text-align:center;
+    padding:10px 0;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    transition:all .2s;
+  }
+  .rollo-toggle .opt.active{
+    background:var(--blue-dim);
+    color:var(--blue);
+  }
+  .rollo-toggle .opt:first-child{border-right:1px solid var(--border)}
+
+  /* ---------- LICHT ---------- */
+  .licht{
+    grid-column:span 1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:16px;
+    min-height:180px;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .bulb{
+    width:56px;height:56px;
+    border-radius:50%;
+    border:2px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    transition:all .25s;
+  }
+  .bulb svg{width:26px;height:26px;stroke:var(--faint);transition:stroke .25s}
+  .licht.on .bulb{
+    border-color:var(--blue);
+    background:var(--blue-dim);
+    box-shadow:0 0 22px rgba(47,125,250,.35);
+  }
+  .licht.on .bulb svg{stroke:var(--blue)}
+  .licht-text{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .licht.on .licht-text{color:var(--blue)}
+
+  @media (max-width:560px){
+    .grid{grid-template-columns:1fr}
+    .climate{grid-column:span 1;grid-template-columns:1fr;gap:14px}
+    .climate-col:first-child{border-right:none;border-bottom:1px solid var(--border);padding-right:0;padding-bottom:14px}
+    .motion,.rollo,.licht{grid-column:span 1}
+  }
+</style>
+
+<div class="app">
+
+  <div class="header">
+    <div>
+      <h1>Smart Home</h1>
+      <div class="sub">smarthome_die_Heiligen</div>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Verbinde…</span>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <div class="card climate">
+      <div class="climate-col">
+        <div class="card-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.5a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/><path d="M12 16v-6"/></svg>
+          Temperatur
+        </div>
+        <div class="readout temp"><span class="val" id="tempVal">--</span><span class="unit">°C</span></div>
+      </div>
+      <div class="climate-col">
+        <div class="card-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s7 8.5 7 13a7 7 0 0 1-14 0c0-4.5 7-13 7-13Z"/></svg>
+          Luftfeuchtigkeit
+        </div>
+        <div class="readout hum"><span class="val" id="humVal">--</span><span class="unit">%</span></div>
+      </div>
+    </div>
+
+    <div class="card motion" id="motionCard">
+      <div class="radar" id="radar">
+        <div class="radar-ring"></div>
+        <div class="radar-ring" style="animation-delay:.5s"></div>
+        <div class="radar-core"></div>
+      </div>
+      <div class="motion-text" id="motionText">Keine Bewegung</div>
+    </div>
+
+    <div class="card rollo">
+      <div class="card-label">Rollo</div>
+      <div class="rollo-visual">
+        <div class="blind-frame"><div class="blind-fill" id="blindFill"></div></div>
+      </div>
+      <div class="rollo-toggle" id="rolloToggle">
+        <div class="opt" id="rolloOpenBtn">Offen</div>
+        <div class="opt" id="rolloClosedBtn">Zu</div>
+      </div>
+    </div>
+
+    <div class="card licht" id="lichtCard">
+      <div class="bulb">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18h6M10 22h4M12 2a6 6 0 0 0-4 10.47c.53.5.94 1.12 1.14 1.83.1.35.16.7.16 1.06v.14h5.4v-.14c0-.36.06-.71.16-1.06.2-.71.61-1.32 1.14-1.83A6 6 0 0 0 12 2Z"/>
+        </svg>
+      </div>
+      <div class="licht-text" id="lichtText">Licht Aus</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  const baseTopic = "smarthome_die_Heiligen";
+  const topics = {
+    temp: baseTopic + "/temperature",
+    hum: baseTopic + "/humidity",
+    motion: baseTopic + "/motion",
+    servo: baseTopic + "/servo",
+    ledWeiss: baseTopic + "/led_weiss"
+  };
+
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const tempVal = document.getElementById('tempVal');
+  const humVal = document.getElementById('humVal');
+  const motionCard = document.getElementById('motionCard');
+  const radar = document.getElementById('radar');
+  const motionText = document.getElementById('motionText');
+  const blindFill = document.getElementById('blindFill');
+  const rolloOpenBtn = document.getElementById('rolloOpenBtn');
+  const rolloClosedBtn = document.getElementById('rolloClosedBtn');
+  const lichtCard = document.getElementById('lichtCard');
+  const lichtText = document.getElementById('lichtText');
+
+  let lichtOn = false;
+  let client = null;
+
+  function setStatus(connected){
+    statusDot.classList.remove('on','off');
+    statusDot.classList.add(connected ? 'on' : 'off');
+    statusText.textContent = connected ? 'Verbunden' : 'Getrennt';
+  }
+
+  try{
+    client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+      clientId: 'dashboard-' + Math.random().toString(16).slice(2),
+      clean: true
+    });
+
+    client.on('connect', function(){
+      setStatus(true);
+      client.subscribe(topics.temp);
+      client.subscribe(topics.hum);
+      client.subscribe(topics.motion);
+      client.subscribe(topics.ledWeiss);
+      client.subscribe(topics.servo);
+    });
+
+    client.on('reconnect', function(){ setStatus(false); });
+    client.on('close', function(){ setStatus(false); });
+    client.on('error', function(){ setStatus(false); });
+
+    client.on('message', function(topic, payload){
+      const msg = payload.toString();
+
+      if(topic === topics.temp){
+        tempVal.textContent = parseFloat(msg).toFixed(1);
+      }
+      if(topic === topics.hum){
+        humVal.textContent = parseFloat(msg).toFixed(1);
+      }
+      if(topic === topics.motion){
+        const active = msg === 'MOTION';
+        motionCard.classList.toggle('active', active);
+        radar.classList.toggle('active', active);
+        motionText.textContent = active ? 'Bewegung erkannt' : 'Keine Bewegung';
+      }
+      if(topic === topics.ledWeiss){
+        setLicht(msg === 'ON');
+      }
+      if(topic === topics.servo){
+        const angle = parseInt(msg, 10);
+        if(!isNaN(angle)){
+          updateRollo(angle >= 90);
+        }
+      }
+    });
+  }catch(e){
+    setStatus(false);
+  }
+
+  function publish(topic, msg){
+    if(client && client.connected){
+      client.publish(topic, msg);
+    }
+  }
+
+  // ---- Rollo (nur Offen/Zu) ----
+  let rolloClosed = false;
+  function updateRollo(closed){
+    rolloClosed = closed;
+    blindFill.style.height = closed ? '100%' : '0%';
+    rolloOpenBtn.classList.toggle('active', !closed);
+    rolloClosedBtn.classList.toggle('active', closed);
+  }
+  rolloOpenBtn.addEventListener('click', function(){
+    updateRollo(false);
+    publish(topics.servo, '0');
+  });
+  rolloClosedBtn.addEventListener('click', function(){
+    updateRollo(true);
+    publish(topics.servo, '180');
+  });
+  updateRollo(false);
+
+  // ---- Licht ----
+  function setLicht(on){
+    lichtOn = on;
+    lichtCard.classList.toggle('on', lichtOn);
+    lichtText.textContent = lichtOn ? 'Licht An' : 'Licht Aus';
+  }
+  lichtCard.addEventListener('click', function(){
+    setLicht(!lichtOn);
+    publish(topics.ledWeiss, lichtOn ? 'ON' : 'OFF');
+  });
+})();
+</script>
